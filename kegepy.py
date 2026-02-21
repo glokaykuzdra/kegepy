@@ -3,7 +3,7 @@ import pandas as pd
 from io import BytesIO, TextIOWrapper
 from requests import get
 from dataclasses import dataclass
-from PIL import Image
+from webbrowser import open as wbopen
 
 
 
@@ -126,14 +126,7 @@ class Task:
                 content += (li + '\n')
             file = TextIOWrapper(BytesIO(content[:-1].encode()), encoding="utf-8")
             return file
-    def open_image(self):
-        resp = get(URLS_KOMPEGE["image"] + str(self.taskId) + '.png', stream=True)
-        resp.raw.decode_content = True
-        return Image.open(resp.raw).show()
-
-
-
-
+    def open_image(self): return wbopen(URLS_KOMPEGE["image"] + str(self.taskId) + '.png')
     
 class KEGE:
     def __init__(self, headers: dict = HEADERS_DEFAULT):
@@ -166,3 +159,7 @@ class KEGE:
     def __data_extraction__(self, data : dict, search_type: str, *args) -> dict:
         if search_type == "task_variantId": return data["tasks"][args[0]-1]
         return data
+    
+
+task = KEGE().search(taskId=26832)
+task.open_image()
