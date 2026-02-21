@@ -142,7 +142,6 @@ class KEGE:
     def search(self, taskId: int = 0, variantId: int = 0, number_task: int = 0): 
         search_type = "task_taskId"
         code = 0
-
         if (taskId or variantId or number_task) is False: return None
         else:
             if taskId: 
