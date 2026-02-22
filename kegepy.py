@@ -73,50 +73,19 @@ class Task:
 
     def get_files_names(self) -> list: return [{"url": file["url"].split('/')[-1], "name": file["name"]} for file in self.files]
 
-    def open_file(self, file_number : int = 1, printed : bool = 0, check_access : bool = 0) -> TextIOWrapper:
+    def get_file(self, file_number : int = 1):
         names = self.get_files_names()
-        if len(names) < file_number:
-            print("KEGEPY: Files weren't found :(")
-            return 0
+        if len(names) < file_number: return None
 
         file_name, real_name = names[file_number-1].values()
         extension = file_name.split('.')[-1]
+        return File(URLS_KOMPEGE["file"] + file_name, real_name, file_name, extension, self.taskId)
 
-        resp = urllib.request.urlopen(URLS_KOMPEGE["file"] + file_name)
-        content = resp.read()
-
-        if extension in ("xls", "xlsx", "ods"):
-            content = pd.read_excel(BytesIO(content)).to_csv(sep=' ', index=False, header=True, encoding="utf-8").encode()
-        elif extension != "txt":
-            print(f"KEGEPY: .{extension} is not supported :(")
-            return 0
-        file = TextIOWrapper(BytesIO(content), encoding="utf-8")
-
-        if printed:
-            ou_con = content.decode()
-            L_symb, L_str = len(ou_con), ou_con.count('\n') + (1 if ou_con[-1:] != '\n' else 0)
-            L_symb -= L_str
-
-            pr = \
-    f"""
-    File of task {self.taskId} was loaded
-    File name: {real_name}
-    Symbols: {L_symb}
-    Strings: {L_str}
-    """
-            l_mx = len(max(pr.split('\n'), key=len))
-            koef = (l_mx//2) - (len(str(self.taskId))-1)
-            print('-'*koef + str(self.taskId) + '-'*koef)
-            print(pr)
-            print('-'*koef*2 + '-'*len(str(self.taskId)))
-        if check_access: 
-            if input("Access this file? (y/n). Default y: ") == 'n': return 0
-        return file
     def open_example(self) -> TextIOWrapper:
         if self.number == 26:
             content = ""
             try: s_t = self.text.index('<em>Типовой пример')
-            except ValueError: return 0
+            except ValueError: return None
             e_t = self.text.index('</em>', s_t)
             l = self.text[e_t:].replace('</em><br />', '~').replace('<em>', '').split('~')
             for li in l:
@@ -126,8 +95,72 @@ class Task:
                 content += (li + '\n')
             file = TextIOWrapper(BytesIO(content[:-1].encode()), encoding="utf-8")
             return file
-    def open_image(self): return wbopen(URLS_KOMPEGE["image"] + str(self.taskId) + '.png')
-    
+    def get_image(self): return Image(URLS_KOMPEGE["image"] + str(self.taskId) + '.png', str(self.taskId) + '.png', str(self.taskId) + '.png', 'png', self.taskId)
+
+@dataclass
+class File:
+    url: str
+    filename: str
+    filename_server: str
+    extension: str
+    taskId: int
+
+    def __convert__(self): pass
+
+    def __log__(self, output_content):
+        L_symb, L_str = len(output_content), output_content.count('\n') + (1 if output_content[-1:] != '\n' else 0)
+        L_symb -= L_str
+        pr = f"File of task {self.taskId} was loaded\nFile name: {self.filename}\nSymbols: {L_symb}\nStrings: {L_str}"
+
+        l_mx = len(max(pr.split('\n'), key=len))
+        koef = (l_mx//2) - (len(str(self.taskId))-1)
+        print('-'*koef + str(self.taskId) + '-'*koef)
+        print(pr)
+        print('-'*koef*2 + '-'*len(str(self.taskId)))
+        return True
+
+    def __get_content__(self):
+        resp = urllib.request.urlopen(self.url)
+
+        content = resp.read()
+        resp.close()
+
+        if type(self) is File:
+            if self.extension in ("xls", "xlsx", "ods"):
+                content = pd.read_excel(BytesIO(content)).to_csv(sep=' ', index=False, header=True, encoding="utf-8").encode()
+            elif self.extension != "txt":
+                return None
+        return content
+
+
+    def open(self, encoding : str = "utf-8", printed : bool = 0): 
+        content = self.__get_content__()
+        if not content: return None
+
+        file = TextIOWrapper(BytesIO(content), encoding=encoding)
+        if printed: self.__log__(content.decode())
+        return file
+    def download(self, encoding : str = "utf-8"):
+        with open(self.filename, 'w', encoding=encoding) as file: 
+            content = self.__get_content__()
+            if not content: return None
+            file.write(content.decode())
+        return True
+
+@dataclass
+class Image(File):
+    def open(self): 
+        resp = get(URLS_KOMPEGE["image"] + str(self.taskId) + '.png', stream=True)
+        resp.raw.decode_content = True
+        return resp.content()
+    def web_open(self): return wbopen(self.url)
+    def download(self):
+        with open(self.filename, 'wb') as file:
+            content = self.__get_content__()
+            if not content: return None
+            file.write(content)
+        return True
+
 class KEGE:
     def __init__(self, headers: dict = HEADERS_DEFAULT):
         self.headers = headers
@@ -162,4 +195,5 @@ class KEGE:
     
 
 task = KEGE().search(taskId=26832)
-task.open_image()
+file = task.get_image()
+print(file.download())
