@@ -1,4 +1,3 @@
-import urllib.request
 import pandas as pd
 from io import BytesIO, TextIOWrapper
 from requests import get
@@ -22,6 +21,9 @@ HEADERS_DEFAULT = {'User-Agent': ('Mozilla/5.0 (Windows NT 6.0; rv:14.0) Gecko/2
                     'Access-control-allow-origin': 'https://kompege.ru',
                     "grant_type" : "client_credentials"
                    }
+SUPPORTED_EXTENSIONS = [
+    "xls", "xlsx", "ods", "txt"
+]
 
 @dataclass
 class Variant:
@@ -38,6 +40,7 @@ class Variant:
     createdAt: str
     updatedAt: str
     tasks: list
+    headers: dict
 
     def get_answers(self):
         data = list()
@@ -70,6 +73,7 @@ class Task:
     difficulty: int
     createdAt: str
     updatedAt: str
+    headers: dict
 
     def get_files_names(self) -> list: return [{"url": file["url"].split('/')[-1], "name": file["name"]} for file in self.files]
 
@@ -79,7 +83,15 @@ class Task:
 
         file_name, real_name = names[file_number-1].values()
         extension = file_name.split('.')[-1]
-        return File(URLS_KOMPEGE["file"] + file_name, real_name, file_name, extension, self.taskId)
+        data = {
+            "url": URLS_KOMPEGE["file"] + file_name,
+            "filename": real_name,
+            "filename_server": file_name,
+            "extension": extension,
+            "taskId": self.taskId,
+            "headers": self.headers
+        }
+        return File(**data)
 
     def open_example(self) -> TextIOWrapper:
         if self.number == 26:
@@ -95,7 +107,16 @@ class Task:
                 content += (li + '\n')
             file = TextIOWrapper(BytesIO(content[:-1].encode()), encoding="utf-8")
             return file
-    def get_image(self): return Image(URLS_KOMPEGE["image"] + str(self.taskId) + '.png', str(self.taskId) + '.png', str(self.taskId) + '.png', 'png', self.taskId)
+    def get_image(self): 
+        data = {
+            "url": URLS_KOMPEGE["image"] + str(self.taskId) + '.png',
+            "filename": str(self.taskId) + '.png',
+            "filename_server": str(self.taskId) + '.png',
+            "extension": 'png',
+            "taskId": self.taskId,
+            "headers": self.headers
+        }
+        return Image(**data)
 
 @dataclass
 class File:
@@ -104,6 +125,7 @@ class File:
     filename_server: str
     extension: str
     taskId: int
+    headers: dict
 
     def __convert__(self): pass
 
@@ -120,16 +142,17 @@ class File:
         return True
 
     def __get_content__(self):
-        resp = urllib.request.urlopen(self.url)
+        if type(self) is File:
+            if self.extension not in SUPPORTED_EXTENSIONS: return None
 
-        content = resp.read()
+        resp = get(self.url, headers=self.headers)
+        if resp.status_code > 400: return None
+        content = resp.content
         resp.close()
 
         if type(self) is File:
             if self.extension in ("xls", "xlsx", "ods"):
                 content = pd.read_excel(BytesIO(content)).to_csv(sep=' ', index=False, header=True, encoding="utf-8").encode()
-            elif self.extension != "txt":
-                return None
         return content
 
 
@@ -141,7 +164,7 @@ class File:
         if printed: self.__log__(content.decode())
         return file
     def download(self, encoding : str = "utf-8"):
-        with open(self.filename, 'w', encoding=encoding) as file: 
+        with open(self.filename, 'w', encoding=encoding, newline='') as file: 
             content = self.__get_content__()
             if not content: return None
             file.write(content.decode())
@@ -173,7 +196,7 @@ class KEGE:
             if taskId: 
                 response = get(URLS_KOMPEGE["main"] + URLS_KOMPEGE["task"] + str(taskId), headers=self.headers)
                 if response.status_code < 400: 
-                    return Task(**self.__data_extraction__(response.json(), search_type))
+                    return Task(headers=self.headers, **self.__data_extraction__(response.json(), search_type))
                 else: code = response.status_code
             if variantId:
                 response, search_type = get(URLS_KOMPEGE["main"] + URLS_KOMPEGE["variant"] + str(variantId), headers=self.headers), "variant"
@@ -181,19 +204,14 @@ class KEGE:
                     if number_task:
                         if 27 >= number_task >= 1:
                             search_type = "task_variantId"
-                            return Task(**self.__data_extraction__(response.json(), search_type, number_task))
+                            return Task(**self.__data_extraction__(response.json(), search_type, number_task) + + {"headers": self.headers})
                         else:
                             print(f"KEGEPY: Number {number_task} is too large.")
                             return None
-                    return Variant(**self.__data_extraction__(response.json(), search_type))
+                    return Variant(**self.__data_extraction__(response.json(), search_type) + {"headers": self.headers})
                 else: code = response.status_code
         print(f"KEGEPY: Not found. Code: {code}")
         return None
     def __data_extraction__(self, data : dict, search_type: str, *args) -> dict:
         if search_type == "task_variantId": return data["tasks"][args[0]-1]
         return data
-    
-
-task = KEGE().search(taskId=26832)
-file = task.get_image()
-print(file.download())
