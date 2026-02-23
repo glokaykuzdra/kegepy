@@ -2,9 +2,9 @@ import pandas as pd
 from io import BytesIO, TextIOWrapper
 from requests import get
 from dataclasses import dataclass
-from webbrowser import open as wbopen
-
-
+import webbrowser
+from re import search as re_search
+from base64 import b64decode
 
 URLS_KOMPEGE = {
     "main": "https://kompege.ru/api/v1/",
@@ -89,6 +89,7 @@ class Task:
             "filename_server": file_name,
             "extension": extension,
             "taskId": self.taskId,
+            "html": self.text,
             "headers": self.headers
         }
         return File(**data)
@@ -107,13 +108,17 @@ class Task:
                 content += (li + '\n')
             file = TextIOWrapper(BytesIO(content[:-1].encode()), encoding="utf-8")
             return file
-    def get_image(self): 
+    def get_image(self):
+        re_s = re_search(r'<img src="([^\\]*)"', self.text)
+        url = re_s.group(1) if re_s else URLS_KOMPEGE["image"] + str(self.taskId) + '.png'
+
         data = {
-            "url": URLS_KOMPEGE["image"] + str(self.taskId) + '.png',
+            "url": url,
             "filename": str(self.taskId) + '.png',
             "filename_server": str(self.taskId) + '.png',
             "extension": 'png',
             "taskId": self.taskId,
+            "html": self.text,
             "headers": self.headers
         }
         return Image(**data)
@@ -125,6 +130,7 @@ class File:
     filename_server: str
     extension: str
     taskId: int
+    html: str
     headers: dict
 
     def __convert__(self): pass
@@ -142,17 +148,15 @@ class File:
         return True
 
     def __get_content__(self):
-        if type(self) is File:
-            if self.extension not in SUPPORTED_EXTENSIONS: return None
+        if self.extension not in SUPPORTED_EXTENSIONS: return None
 
         resp = get(self.url, headers=self.headers)
         if resp.status_code > 400: return None
         content = resp.content
         resp.close()
 
-        if type(self) is File:
-            if self.extension in ("xls", "xlsx", "ods"):
-                content = pd.read_excel(BytesIO(content)).to_csv(sep=' ', index=False, header=True, encoding="utf-8").encode()
+        if self.extension in ("xls", "xlsx", "ods"):
+            content = pd.read_excel(BytesIO(content)).to_csv(sep=' ', index=False, header=True, encoding="utf-8").encode()
         return content
 
 
@@ -172,11 +176,18 @@ class File:
 
 @dataclass
 class Image(File):
-    def open(self): 
-        resp = get(URLS_KOMPEGE["image"] + str(self.taskId) + '.png', stream=True)
-        resp.raw.decode_content = True
-        return resp.content()
-    def web_open(self): return wbopen(self.url)
+    def __get_content__(self):
+        if self.url.startswith("https") or self.url.startswith("http"):
+            resp = get(self.url, headers=self.headers, stream=True)
+            resp.raw.decode_content = True
+            if resp.status_code > 400: return None
+            content = resp.content
+            resp.close()
+        else:
+            content = b64decode(self.url.split(',')[1])
+        return content
+    def open(self): return self.__get_content__()
+    def web_open(self): return webbrowser.open(self.url)
     def download(self):
         with open(self.filename, 'wb') as file:
             content = self.__get_content__()
