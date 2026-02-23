@@ -159,6 +159,11 @@ class File:
             content = pd.read_excel(BytesIO(content)).to_csv(sep=' ', index=False, header=True, encoding="utf-8").encode()
         return content
 
+    def __path__(self, path):
+        pref = '\\' if path.count('\\') > path.count('/') else '/'
+        if path[1] + path[2] != ':' + pref: path = '.' + pref + path
+        if path[-1] != pref: path += pref
+        return path
 
     def open(self, encoding : str = "utf-8", printed : bool = 0): 
         content = self.__get_content__()
@@ -167,8 +172,9 @@ class File:
         file = TextIOWrapper(BytesIO(content), encoding=encoding)
         if printed: self.__log__(content.decode())
         return file
-    def download(self, encoding : str = "utf-8"):
-        with open(self.filename, 'w', encoding=encoding, newline='') as file: 
+    def download(self, encoding : str = "utf-8", path : str = '.\\'):
+        path = self.__path__(path)
+        with open(path + self.filename, 'w', encoding=encoding, newline='') as file: 
             content = self.__get_content__()
             if not content: return None
             file.write(content.decode())
@@ -188,8 +194,9 @@ class Image(File):
         return content
     def open(self): return self.__get_content__()
     def web_open(self): return webbrowser.open(self.url)
-    def download(self):
-        with open(self.filename, 'wb') as file:
+    def download(self, path : str = '.\\'):
+        path = self.__path__(path)
+        with open(path + self.filename, 'wb') as file:
             content = self.__get_content__()
             if not content: return None
             file.write(content)
