@@ -222,11 +222,11 @@ class KEGE:
                     if number_task:
                         if 27 >= number_task >= 1:
                             search_type = "task_variantId"
-                            return Task(**self.__data_extraction__(response.json(), search_type, number_task) + + {"headers": self.headers})
+                            return Task(**self.__data_extraction__(response.json(), search_type, number_task), headers=self.headers)
                         else:
                             print(f"KEGEPY: Number {number_task} is too large.")
                             return None
-                    return Variant(**self.__data_extraction__(response.json(), search_type) + {"headers": self.headers})
+                    return Variant(**self.__data_extraction__(response.json(), search_type), headers=self.headers)
                 else: code = response.status_code
         print(f"KEGEPY: Not found. Code: {code}")
         return None
