@@ -51,7 +51,7 @@ class Variant:
             data.append({"answer": ans, "taskId": tI, "score": (2 if n in ms else 1), "number": n})
         return data
     def get_task(self, number):
-        if 27 >= number >= 1: return Task(**self.tasks[number-1])
+        if 27 >= number >= 1: return Task(**self.tasks[number-1], headers=self.headers, answer="")
 
 @dataclass
 class Task:
@@ -74,6 +74,13 @@ class Task:
     createdAt: str
     updatedAt: str
     headers: dict
+    answer: str
+
+    def __post_init__(self):
+        self.answer = self.key.replace("\\n", "\n") if "\\n" in self.key else self.key
+        if len(self.subTask):
+            for task in self.subTask:
+                self.answer += "\n" + task["key"].replace("\\n", "\n") if "\\n" in task["key"] else task["key"]
 
     def get_files_names(self) -> list: return [{"url": file["url"].split('/')[-1], "name": file["name"]} for file in self.files]
 
@@ -214,15 +221,16 @@ class KEGE:
             if taskId: 
                 response = get(URLS_KOMPEGE["main"] + URLS_KOMPEGE["task"] + str(taskId), headers=self.headers)
                 if response.status_code < 400: 
-                    return Task(headers=self.headers, **self.__data_extraction__(response.json(), search_type))
+                    return Task(headers=self.headers, **self.__data_extraction__(response.json(), search_type), answer="")
                 else: code = response.status_code
             if variantId:
                 response, search_type = get(URLS_KOMPEGE["main"] + URLS_KOMPEGE["variant"] + str(variantId), headers=self.headers), "variant"
                 if response.status_code < 400:
                     if number_task:
                         if 27 >= number_task >= 1:
+                            if 21 >= number_task >= 19: number_task = 19
                             search_type = "task_variantId"
-                            return Task(**self.__data_extraction__(response.json(), search_type, number_task), headers=self.headers)
+                            return Task(**self.__data_extraction__(response.json(), search_type, number_task), headers=self.headers, answer="")
                         else:
                             print(f"KEGEPY: Number {number_task} is too large.")
                             return None
